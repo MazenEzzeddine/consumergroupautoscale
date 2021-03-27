@@ -85,6 +85,7 @@ public class AdminClientExample {
 
 
             // list topics
+            //comment
             ListTopicsResult topics = admin.listTopics();
             topics.names().get().forEach(name -> log.info("topic name {}", name));
 
