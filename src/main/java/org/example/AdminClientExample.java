@@ -48,6 +48,8 @@ public class AdminClientExample {
 
         // initialize admin client
 
+        // this is feature 2
+
         String bootstrapServers = System.getenv("BOOTSTRAP_SERVERS");
         String topicg = System.getenv("TOPIC");
         Long sleep = Long.valueOf(System.getenv("SLEEP"));
