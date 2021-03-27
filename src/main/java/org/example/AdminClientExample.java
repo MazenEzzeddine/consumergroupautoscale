@@ -21,6 +21,10 @@ import org.apache.logging.log4j.LogManager;
 
 public class AdminClientExample {
 
+
+
+    // this code is functional but need refactoring
+
     public static final String TOPIC_NAME = "testtopic2";
     public static final String CONSUMER_GROUP = "testgroup2";
     public static final List<String> TOPIC_LIST = Collections.singletonList(TOPIC_NAME);
