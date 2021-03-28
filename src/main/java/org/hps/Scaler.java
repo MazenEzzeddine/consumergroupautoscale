@@ -33,9 +33,11 @@ public class Scaler {
 
     public static void main(String[] args) throws ExecutionException, InterruptedException {
 
-        MetaDataConsumer consumer = new MetaDataConsumer();
-        consumer.createMetaConsumer();
-        consumer.consumerEnforceRebalance();
+
+        //TODO creating a metaconsumer to enforce rebalance
+//        MetaDataConsumer consumer = new MetaDataConsumer();
+//        consumer.createMetaConsumer();
+//        consumer.consumerEnforceRebalance();
 
         //String bootstrapServers = System.getenv("BOOTSTRAP_SERVERS");
         //String topicg = System.getenv("TOPIC");
