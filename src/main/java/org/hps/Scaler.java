@@ -326,7 +326,7 @@ public class Scaler {
                                 // firstIteration = true;
 
                                 scaled = true;
-                                waitingTime = 2 * waitingTime;
+                                sleep = 2 * sleep;
 
                                 break;
                             }
