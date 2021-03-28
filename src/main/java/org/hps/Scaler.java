@@ -302,8 +302,8 @@ public class Scaler {
                         totalecoff += currentPartitionToLastOffset.get(tp);
                     }
 
-                    long consumptionratePerConsumer = (totalcoff - totalpoff) / 30;
-                    long arrivalratePerConsumer = (totalecoff - totalepoff) / 30;
+                    long consumptionratePerConsumer = (totalcoff - totalpoff) / sleep;
+                    long arrivalratePerConsumer = (totalecoff - totalepoff) / sleep;
 
 
                     log.info("the consumption rate of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
