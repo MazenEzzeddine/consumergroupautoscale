@@ -6,7 +6,9 @@ import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.Configurable;
 import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
@@ -19,7 +21,7 @@ import java.util.stream.Collectors;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
-public class AdminClientExample {
+public class AdminClientExample  {
 
 
 
@@ -48,11 +50,73 @@ public class AdminClientExample {
     private static final Logger log = LogManager.getLogger(AdminClientExample.class);
 
 
+
+    private static Properties consumerGroupProps;
+    private static Properties metadataConsumerProps;
+    private static KafkaConsumer<byte[], byte[]> metadataConsumer;
+
+
+   /* @Override
+    public void configure(Map<String, ?> configs) {
+
+        // Construct Properties from config map
+        consumerGroupProps = new Properties();
+        for (final Map.Entry<String, ?> prop : configs.entrySet()) {
+            consumerGroupProps.put(prop.getKey(), prop.getValue());
+        }
+
+        // group.id must be defined
+        final String groupId = "testgroup2";//consumerGroupProps.getProperty(ConsumerConfig.GROUP_ID_CONFIG);
+
+
+        // Create a new consumer that can be used to get lag metadata for the consumer group
+        metadataConsumerProps = new Properties();
+        metadataConsumerProps.putAll(consumerGroupProps);
+        metadataConsumerProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+        final String clientId = groupId + ".metadada";
+        metadataConsumerProps.put(ConsumerConfig.CLIENT_ID_CONFIG, clientId);
+
+        log.info(
+                "Configured LagBasedPartitionAssignor with values:\n"
+                        + "\tgroup.id = {}\n"
+                        + "\tclient.id = {}\n",
+                groupId,
+                clientId
+        );
+
+    }*/
+
+
+
+
+
     public static void main(String[] args) throws ExecutionException, InterruptedException {
 
         // initialize admin client
 
         // this is feature 2
+
+
+        ///////////////////testing a metadataconsumer to enforcerebelabce////////////////////
+        Properties props2 = new Properties();
+        props2.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "my-cluster-kafka-bootstrap:9092");
+        props2.put(ConsumerConfig.GROUP_ID_CONFIG, "testgroup2");
+
+        props2.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+
+        //props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, config.getAutoOffsetReset());
+        props2.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
+        props2.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
+        // props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
+
+        log.info("creating meta data consumer");
+        if (metadataConsumer == null) {
+            metadataConsumer = new KafkaConsumer<>(props2);
+            log.info("created meta data consumer");
+
+        }
+
+
 
         String bootstrapServers = System.getenv("BOOTSTRAP_SERVERS");
         String topicg = System.getenv("TOPIC");
@@ -82,7 +146,34 @@ public class AdminClientExample {
         Map<TopicPartition, Long> currentPartitionToCommittedOffset = new HashMap<>();
         Map<TopicPartition, Long> previousPartitionToCommittedOffset = new HashMap<>();
 
+
+        ///////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
         while (true) {
+
+
+
+            ///////////////////testing number of replicas////////////////////
+
+            try (final KubernetesClient k8ss = new DefaultKubernetesClient()) {
+                ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
+                k8ss.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
+                int replicas = k8ss.apps().deployments().inNamespace("default").withName("cons1pss").get().getSpec().getReplicas();
+
+                log.info("current number of consumer replicas is {}", replicas);
+            }
+                // firstIteration = true;
+
+
+
+
+
+            //////////////////////////////////////////////////////////
+
 
 
             Map<TopicPartition, Long> partitionToLag = new HashMap<>();
@@ -225,6 +316,10 @@ public class AdminClientExample {
           }
 
 
+            log.info("Enforcing Rebalance trial");
+            metadataConsumer.enforceRebalance();
+
+
 
 
             ///////////////////////////////////////////////////////////////////////////
@@ -275,6 +370,8 @@ public class AdminClientExample {
                    } else {
 
                        log.info("consumers are equal  to nb partition we can not scale");
+                       log.info("Enforcing Rebalance trial");
+                       metadataConsumer.enforceRebalance();
 
                    }
 
@@ -317,31 +414,7 @@ public class AdminClientExample {
     }
 
 
-    static class TopicPartitionLag {
 
-        private final String topic;
-        private final int partition;
-        private final long lag;
-
-        TopicPartitionLag(String topic, int partition, long lag) {
-            this.topic = topic;
-            this.partition = partition;
-            this.lag = lag;
-        }
-
-        String getTopic() {
-            return topic;
-        }
-
-        int getPartition() {
-            return partition;
-        }
-
-        long getLag() {
-            return lag;
-        }
-
-    }
 
 
     public static  Map<String, Set<TopicPartition>> getConsumerGroupMemberInfo(ConsumerGroupDescription consumerGroupDescription) {
