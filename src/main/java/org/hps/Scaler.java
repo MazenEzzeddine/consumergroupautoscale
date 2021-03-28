@@ -1,4 +1,4 @@
-package org.example;
+package org.hps;
 
 import io.fabric8.kubernetes.api.model.ServiceAccount;
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder;
@@ -8,10 +8,8 @@ import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
-import org.apache.kafka.common.Configurable;
 import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.joda.time.DateTime;
 
 import java.util.*;
@@ -21,7 +19,7 @@ import java.util.stream.Collectors;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
-public class AdminClientExample  {
+public class Scaler {
 
 
 
@@ -34,22 +32,13 @@ public class AdminClientExample  {
     public static  int NUM_PARTITIONS;
     public static final short REP_FACTOR = 1;
 
-    long previousComittedOffsets = 0;
-    long currentComittedOffsets = 0;
 
-    static boolean  scaled= false;
-
-
+    static boolean  scaled = false;
     public static  AdminClient admin = null;
-
-    // public static  = null;
 
     static int scale = 2;
 
-
-    private static final Logger log = LogManager.getLogger(AdminClientExample.class);
-
-
+    private static final Logger log = LogManager.getLogger(Scaler.class);
 
     private static Properties consumerGroupProps;
     private static Properties metadataConsumerProps;
@@ -88,13 +77,7 @@ public class AdminClientExample  {
 
 
 
-
-
     public static void main(String[] args) throws ExecutionException, InterruptedException {
-
-        // initialize admin client
-
-        // this is feature 2
 
 
         ///////////////////testing a metadataconsumer to enforcerebelabce////////////////////
@@ -116,10 +99,8 @@ public class AdminClientExample  {
 
         }
 
-
-
-        String bootstrapServers = System.getenv("BOOTSTRAP_SERVERS");
-        String topicg = System.getenv("TOPIC");
+        //String bootstrapServers = System.getenv("BOOTSTRAP_SERVERS");
+        //String topicg = System.getenv("TOPIC");
         Long sleep = Long.valueOf(System.getenv("SLEEP"));
         Long waitingTime = Long.valueOf(System.getenv("WAITING_TIME"));
         boolean firstIteration = true;
@@ -130,32 +111,24 @@ public class AdminClientExample  {
         log.info("waiting time  is {}", waitingTime);
 
 
-
         Properties props = new Properties();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "my-cluster-kafka-bootstrap:9092");
         props.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, 1000);
         props.put(AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, 1000);
          admin   = AdminClient.create(props);
-        TopicDescription topicDescription;
 
-        long totalOffset =0;
-        Long currentCommittedOffsets=0L;
-
-        Long previousCommittedOffsets=0L;
 
         Map<TopicPartition, Long> currentPartitionToCommittedOffset = new HashMap<>();
         Map<TopicPartition, Long> previousPartitionToCommittedOffset = new HashMap<>();
+
+        Map<TopicPartition, Long> previousPartitionToLastOffset = new HashMap<>();
+        Map<TopicPartition, Long> currentPartitionToLastOffset = new HashMap<>();
 
 
         ///////////////////////////////////////////////////////////////////////////////////////
 
 
-
-
-
         while (true) {
-
-
 
             ///////////////////testing number of replicas////////////////////
 
@@ -168,13 +141,7 @@ public class AdminClientExample  {
             }
                 // firstIteration = true;
 
-
-
-
-
             //////////////////////////////////////////////////////////
-
-
 
             Map<TopicPartition, Long> partitionToLag = new HashMap<>();
 
@@ -198,7 +165,6 @@ public class AdminClientExample  {
 
             Map<TopicPartition, OffsetSpec> requestLatestOffsets = new HashMap<>();
             Map<TopicPartition, OffsetSpec> requestEarliestOffsets = new HashMap<>();
-            Map<TopicPartition, OffsetSpec> requestOlderOffsets = new HashMap<>();
             DateTime resetTo = new DateTime().minusHours(2);
             // For all topics and partitions that have offsets committed by the group, get their latest offsets, earliest offsets
             // and the offset for 2h ago. Note that I'm populating the request for 2h old offsets, but not using them.
@@ -206,7 +172,6 @@ public class AdminClientExample  {
             for (TopicPartition tp : offsets.keySet()) {
                 requestLatestOffsets.put(tp, OffsetSpec.latest());
                 requestEarliestOffsets.put(tp, OffsetSpec.earliest());
-                requestOlderOffsets.put(tp, OffsetSpec.forTimestamp(resetTo.getMillis()));
             }
 
             Map<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> latestOffsets =
@@ -223,11 +188,16 @@ public class AdminClientExample  {
                 if (firstIteration) {
 
                     currentPartitionToCommittedOffset.put(e.getKey(), committedOffset);
+
+                    currentPartitionToLastOffset.put(e.getKey(), latestOffset);
                 } else {
 
                     previousPartitionToCommittedOffset.put(e.getKey(),  currentPartitionToCommittedOffset.get(e.getKey()));
+                    previousPartitionToLastOffset.put(e.getKey(),  currentPartitionToLastOffset.get(e.getKey()));
 
                     currentPartitionToCommittedOffset.put(e.getKey(), committedOffset);
+                    currentPartitionToLastOffset.put(e.getKey(), latestOffset);
+
                 }
               //  currentPartitionToCommittedOffset.put(e.getKey(), committedOffset);
                 partitionToLag.put(e.getKey(), lag);
@@ -239,21 +209,24 @@ public class AdminClientExample  {
                         + latestOffset + " so consumer group is "
                         + (lag) + " records behind");
 
-                totalOffset +=  lag;
             }
 
 
 
             if (! firstIteration) {
                 for (Map.Entry<TopicPartition, Long> entry : previousPartitionToCommittedOffset.entrySet()) {
-                    log.info("for partition {} previousCommittedOffsets = {}", entry.getKey(),
+                    log.info("For partition {} previousCommittedOffsets = {}", entry.getKey(),
                             previousPartitionToCommittedOffset.get(entry.getKey()));
 
-
-                    log.info(" for partition {} currentCommittedOffsets = {}", entry.getKey(),
+                    log.info(" For partition {} currentCommittedOffsets = {}", entry.getKey(),
                             currentPartitionToCommittedOffset.get(entry.getKey()));
 
+                    //log latest produced offset
+                    log.info("For partition {} previousEndOffsets = {}", entry.getKey(),
+                            previousPartitionToLastOffset.get(entry.getKey()));
 
+                    log.info(" for partition {} currentEndOffsets = {}", entry.getKey(),
+                            currentPartitionToLastOffset.get(entry.getKey()));
                 }
             }
 
@@ -262,8 +235,7 @@ public class AdminClientExample  {
 
             //ConsumerTolag
 
-            log.info("printing partition lags");
-
+            log.info("Printing partition lags");
 
             for(Map.Entry<TopicPartition, Long> entry :  partitionToLag.entrySet()) {
                 log.info("partition {} has the following lag {}", entry.getKey().partition() , entry.getValue());
@@ -271,143 +243,139 @@ public class AdminClientExample  {
 
 
 
-            log.info("Call to CG description ");
+            log.info("Call to consumer group description ");
 
             Map<MemberDescription, Long> consumerToLag = new HashMap<>();
             Set<TopicPartition> topicPartitions = new HashSet<>();
-
-            Long lag =0L;
+             //lag per consumer
+            Long lag = 0L;
+            //get information on consumer groups, their partitions and their members
             DescribeConsumerGroupsResult describeConsumerGroupsResult =
-                    admin.describeConsumerGroups(Collections.singletonList(AdminClientExample.CONSUMER_GROUP));
+                    admin.describeConsumerGroups(Collections.singletonList(Scaler.CONSUMER_GROUP));
             KafkaFuture<Map<String, ConsumerGroupDescription>> futureOfDescribeConsumerGroupsResult =
                     describeConsumerGroupsResult.all();
             Map<String, ConsumerGroupDescription> consumerGroupDescriptionMap = futureOfDescribeConsumerGroupsResult.get();
            Map<String, Set<TopicPartition>> memberToTopicPartitionMap = new HashMap<>();
-            for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(AdminClientExample.CONSUMER_GROUP).members()) {
+
+           //compute lag per consumer
+            for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
                 MemberAssignment memberAssignment = memberDescription.assignment();
-                log.info("member {} has the following assignments", memberDescription.consumerId());
+                log.info("Member {} has the following assignments", memberDescription.consumerId());
                 topicPartitions = memberAssignment.topicPartitions();
                memberToTopicPartitionMap.put(memberDescription.consumerId(), topicPartitions);
                 for (TopicPartition tp : memberAssignment.topicPartitions()) {
                     log.info("\tpartition {}", tp.toString());
                      lag += partitionToLag.get(tp);
-
                 }
-
-               // consumerToLag.put(memberDescription, lag);
 
                 consumerToLag.putIfAbsent(memberDescription, lag);
                 lag = 0L;
-
             }
 
 
-            //print lag per consumer
+            log.info(" Observed Lag per consumer");
 
-
-            log.info("We are going to print lag per consumer");
-
-          for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(AdminClientExample.CONSUMER_GROUP).members()) {
-             log.info("the total offsets for partitions owend by  member {} is  {}", memberDescription.consumerId(),
+          for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
+             log.info("the total offsets for partitions owned by  member {} is  {}", memberDescription.consumerId(),
                       consumerToLag.get(memberDescription));
-
-
-
           }
 
 
-            log.info("Enforcing Rebalance trial");
-            metadataConsumer.enforceRebalance();
+/*            log.info("Enforcing Rebalance trial");
+            metadataConsumer.enforceRebalance();*/
 
-
-
-
-            ///////////////////////////////////////////////////////////////////////////
-           // Map<String, Map<TopicPartition, Long>> memberToTopicPartitioAndLagnMap = new HashMap<>();
-
-
-
-
-
-
-            int size =  consumerGroupDescriptionMap.get(AdminClientExample.CONSUMER_GROUP).members().size();
+            int size =  consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members().size();
 
 
             if (! firstIteration) {
-            for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(AdminClientExample.CONSUMER_GROUP).members()) {
+                for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
 
-                long totalpoff =0;
-                long totalcoff=0;
+                    long totalpoff = 0;
+                    long totalcoff = 0;
+                    long totalepoff = 0;
+                    long totalecoff = 0;
 
+                    for(TopicPartition tp :  memberDescription.assignment().topicPartitions()) {
+                        totalpoff += previousPartitionToCommittedOffset.get(tp);
+                        totalcoff += currentPartitionToCommittedOffset.get(tp);
+                        totalepoff += previousPartitionToLastOffset.get(tp);
+                        totalecoff += currentPartitionToLastOffset.get(tp);
+                    }
 
-                      for(TopicPartition tp :  memberDescription.assignment().topicPartitions()) {
-                          totalpoff += previousPartitionToCommittedOffset.get(tp);
-                          totalcoff += currentPartitionToCommittedOffset.get(tp);
-                      }
-
-                      long ratePerConsumer = (totalcoff - totalpoff)/ 30;
-
-                      log.info("the consumption rate of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
-                      ratePerConsumer);
-
-
-               if (consumerToLag.get(memberDescription) < (ratePerConsumer * waitingTime)){
-                   log.info("the magic formula for consumer {} does not hols I am going to scale by one",  memberDescription.consumerId());
-
-                   if (size < NUM_PARTITIONS) {
-                       log.info("consumers are less than nb partition we can scale");
+                    long consumptionratePerConsumer = (totalcoff - totalpoff) / 30;
+                    long arrivalratePerConsumer = (totalecoff - totalepoff) / 30;
 
 
-                       try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
-                           ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
-                           k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
-                           k8s.apps().deployments().inNamespace("default").withName("cons1pss").scale(size + 1);
-                           // firstIteration = true;
+                    log.info("the consumption rate of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
+                            consumptionratePerConsumer);
+                    log.info("the arrival  rate to partitions of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
+                            arrivalratePerConsumer);
 
-                           scaled = true;
-                           break;
-                       }
-                   } else {
 
-                       log.info("consumers are equal  to nb partition we can not scale");
-                       log.info("Enforcing Rebalance trial");
-                       metadataConsumer.enforceRebalance();
+                    if (consumerToLag.get(memberDescription) < (consumptionratePerConsumer * waitingTime)){
+                        log.info("The magic formula for consumer {} does not hold I am going to scale by one for now",
+                                memberDescription.consumerId());
 
-                   }
+                        if (size < NUM_PARTITIONS) {
+                            log.info("consumers are less than nb partition we can scale");
 
-               } else {
-                   log.info("the magic formula for consumer {} does  hold need NOT to scale",  memberDescription.consumerId());
+                            try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
+                                ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
+                                k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
+                                k8s.apps().deployments().inNamespace("default").withName("cons1pss").scale(size + 1);
+                                // firstIteration = true;
 
-               }
+                                scaled = true;
+                                waitingTime = 2 * waitingTime;
 
+                                break;
+                            }
+                        } else {
+                            log.info("consumers are equal  to nb partition we can not scale anymore");
+//                            log.info("Enforcing Rebalance trial");
+//                            metadataConsumer.enforceRebalance();
+
+                        }
+
+                    } else {
+                        log.info("the magic formula for consumer {} does  hold need NOT to scale, we shall downscale",
+                                memberDescription.consumerId());
+
+                        try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
+                            ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
+                            k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
+                            int replicas = k8s.apps().deployments().inNamespace("default").withName("cons1pss").get().getSpec().getReplicas();
+                            if (replicas > 1) {
+                                k8s.apps().deployments().inNamespace("default").withName("cons1pss").scale(replicas - 1);
+                                // firstIteration = true;
+
+                                scaled = true;
+                                sleep = 2 * sleep;
+                                break;
+                            }
+                        }
+
+                    }
+
+                }
             }
-            }
 
 
-
-
-
-
-
-
-
-            Thread.sleep(1000 * 30);
-
-            totalOffset = 0;
-
-            for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(AdminClientExample.CONSUMER_GROUP).members()) {
+            for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
                // log.info("the total offsets for partitions owend by  member {} is  {}", memberDescription.consumerId(),
                         consumerToLag.put(memberDescription, 0L);
             }
 
             firstIteration = false;
+            Thread.sleep(sleep);
 
 
             if (scaled) {
+                log.info("we already scaled so sleep twice {}", sleep);
                 firstIteration = true;
                 scaled = false;
+                sleep = sleep/2;
             }
-
 
         }
 
