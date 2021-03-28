@@ -35,9 +35,9 @@ public class Scaler {
 
 
         //TODO creating a metaconsumer to enforce rebalance
-//        MetaDataConsumer consumer = new MetaDataConsumer();
-//        consumer.createMetaConsumer();
-//        consumer.consumerEnforceRebalance();
+       MetaDataConsumer consumer = new MetaDataConsumer();
+       consumer.createDirectConsumer();
+       consumer.consumerEnforceRebalance();
 
         //String bootstrapServers = System.getenv("BOOTSTRAP_SERVERS");
         //String topicg = System.getenv("TOPIC");
