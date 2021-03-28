@@ -10,7 +10,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
 
-public class MetaDataConsumer implements Configurable {
+public class MetaDataConsumer /*implements Configurable*/ {
 
     private Properties consumerGroupProps;
     private Properties metadataConsumerProps;
@@ -20,7 +20,7 @@ public class MetaDataConsumer implements Configurable {
     private static final Logger log = LogManager.getLogger(Scaler.class);
 
 
-    @Override
+    /*@Override
     public void configure(Map<String, ?> configs) {
 
         // Construct Properties from config map
@@ -50,7 +50,7 @@ public class MetaDataConsumer implements Configurable {
                 clientId
         );
 
-    }
+    }*/
 
 
 
