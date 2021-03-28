@@ -25,49 +25,23 @@ public class Scaler {
     // this code is functional but need refactoring
 
     public static final String CONSUMER_GROUP = "testgroup2";
-    /*public static final List<String> TOPIC_LIST = Collections.singletonList(TOPIC_NAME);
-    public static final List<String> CONSUMER_GRP_LIST = Collections.singletonList(CONSUMER_GROUP);*/
     public static  int NUM_PARTITIONS;
-
-
     static boolean  scaled = false;
     public static  AdminClient admin = null;
 
-    static int scale = 2;
-
     private static final Logger log = LogManager.getLogger(Scaler.class);
-
-
-
-
-
-
-
-
 
     public static void main(String[] args) throws ExecutionException, InterruptedException {
 
-
-
         MetaDataConsumer consumer = new MetaDataConsumer();
-
-
         consumer.createMetaConsumer();
-
         consumer.consumerEnforceRebalance();
-
-
-
-
-
-
 
         //String bootstrapServers = System.getenv("BOOTSTRAP_SERVERS");
         //String topicg = System.getenv("TOPIC");
         Long sleep = Long.valueOf(System.getenv("SLEEP"));
         Long waitingTime = Long.valueOf(System.getenv("WAITING_TIME"));
         boolean firstIteration = true;
-
 
         log.info("sleep is {}", sleep);
 
@@ -87,9 +61,7 @@ public class Scaler {
         Map<TopicPartition, Long> previousPartitionToLastOffset = new HashMap<>();
         Map<TopicPartition, Long> currentPartitionToLastOffset = new HashMap<>();
 
-
         ///////////////////////////////////////////////////////////////////////////////////////
-
 
         while (true) {
 
@@ -328,33 +300,6 @@ public class Scaler {
 
         }
 
-    }
-
-
-
-
-
-    public static  Map<String, Set<TopicPartition>> getConsumerGroupMemberInfo(ConsumerGroupDescription consumerGroupDescription) {
-        Map<String, Set<TopicPartition>> memberToTopicPartitionMap = new HashMap<>();
-        for (MemberDescription memberDescription : consumerGroupDescription.members()) {
-            MemberAssignment memberAssignment = memberDescription.assignment();
-            Set<TopicPartition> topicPartitions = memberAssignment.topicPartitions();
-            memberToTopicPartitionMap.put(memberDescription.consumerId(), topicPartitions);
-        }
-        return memberToTopicPartitionMap;
-    }
-
-
-
-   static  Map<TopicPartition, Long> getConsumerGroupOffsetInfo(String consumerGroupID)
-            throws ExecutionException, InterruptedException {
-        ListConsumerGroupOffsetsResult listConsumerGroupOffsetsResult =
-                admin.listConsumerGroupOffsets(consumerGroupID);
-        KafkaFuture<Map<TopicPartition, OffsetAndMetadata>> futureOfConsumerGroupOffsetResult =
-                listConsumerGroupOffsetsResult.partitionsToOffsetAndMetadata();
-        Map<TopicPartition, OffsetAndMetadata> consumerGroupOffsetInfo = futureOfConsumerGroupOffsetResult.get();
-        return consumerGroupOffsetInfo.entrySet().stream().
-                collect(Collectors.toMap(Map.Entry::getKey, x -> x.getValue().offset()));
     }
 
 
