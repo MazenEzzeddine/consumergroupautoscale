@@ -37,6 +37,9 @@ public class Scaler {
     static boolean  firstIteration = true;
     static Long sleep;
     static Long waitingTime;
+    static String topic;
+    static String cluster;
+    static String consumerGroup;
 
 
 
@@ -50,6 +53,11 @@ public class Scaler {
 
         sleep = Long.valueOf(System.getenv("SLEEP"));
         waitingTime = Long.valueOf(System.getenv("WAITING_TIME"));
+        topic = System.getenv("TOPIC");
+        cluster = System.getenv("CLUSTER");
+        consumerGroup = System.getenv("CONSUMER_GROUP");
+
+
 
         log.info("sleep is {}", sleep);
         log.info("waiting time  is {}", waitingTime);
@@ -202,7 +210,7 @@ public class Scaler {
     static void scaleDecision( Map<String, ConsumerGroupDescription> consumerGroupDescriptionMap,
                                Map<MemberDescription, Long> consumerToLag) {
 
-        int size =  consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members().size();
+        int size = consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members().size();
 
         for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
 
@@ -211,24 +219,24 @@ public class Scaler {
             long totalepoff = 0;
             long totalecoff = 0;
 
-            for(TopicPartition tp :  memberDescription.assignment().topicPartitions()) {
+            for (TopicPartition tp : memberDescription.assignment().topicPartitions()) {
                 totalpoff += previousPartitionToCommittedOffset.get(tp);
                 totalcoff += currentPartitionToCommittedOffset.get(tp);
                 totalepoff += previousPartitionToLastOffset.get(tp);
                 totalecoff += currentPartitionToLastOffset.get(tp);
             }
 
-            float  consumptionratePerConsumer = (float) (totalcoff - totalpoff) / sleep;
-            float  arrivalratePerConsumer = (float) (totalecoff - totalepoff) / sleep;
+            float consumptionratePerConsumer = (float) (totalcoff - totalpoff) / sleep;
+            float arrivalratePerConsumer = (float) (totalecoff - totalepoff) / sleep;
 
 
             log.info("the consumption rate of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
-                    consumptionratePerConsumer  * 1000);
+                    consumptionratePerConsumer * 1000);
             log.info("the arrival  rate to partitions of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
-                    arrivalratePerConsumer  * 1000);
+                    arrivalratePerConsumer * 1000);
 
 
-            if (consumerToLag.get(memberDescription) > (consumptionratePerConsumer * waitingTime)){
+            if (consumerToLag.get(memberDescription) > (consumptionratePerConsumer * waitingTime)) {
                 log.info("The magic formula for consumer {} does not hold I am going to scale by one for now",
                         memberDescription.consumerId());
 
@@ -242,6 +250,8 @@ public class Scaler {
                         // firstIteration = true;
 
                         scaled = true;
+
+                        // is that needed, ? a cool down period?
                         sleep = 2 * sleep;
 
                         break;
@@ -249,29 +259,85 @@ public class Scaler {
                 } else {
                     log.info("consumers are equal  to nb partition we can not scale anymore");
 
-
-                }
-
-            } else {
-                log.info("the magic formula for consumer {} does  hold need NOT to scale, we shall downscale",
-                        memberDescription.consumerId());
-
-                try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
-                    ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
-                    k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
-                    int replicas = k8s.apps().deployments().inNamespace("default").withName("cons1pss").get().getSpec().getReplicas();
-                    if (replicas > 1) {
-                        k8s.apps().deployments().inNamespace("default").withName("cons1pss").scale(replicas - 1);
-                        // firstIteration = true;
-                        scaled = true;
-                        sleep = 2 * sleep;
-                        break;
-                    }
                 }
 
             }
-
         }
+
+        ///////////////////////////////////////////////////////////////////////////////////////////
+
+        if (!scaled) {
+
+
+            for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
+
+                long totalpoff = 0;
+                long totalcoff = 0;
+                long totalepoff = 0;
+                long totalecoff = 0;
+
+                for (TopicPartition tp : memberDescription.assignment().topicPartitions()) {
+                    totalpoff += previousPartitionToCommittedOffset.get(tp);
+                    totalcoff += currentPartitionToCommittedOffset.get(tp);
+                    totalepoff += previousPartitionToLastOffset.get(tp);
+                    totalecoff += currentPartitionToLastOffset.get(tp);
+                }
+
+                float consumptionratePerConsumer = (float) (totalcoff - totalpoff) / sleep;
+                float arrivalratePerConsumer = (float) (totalecoff - totalepoff) / sleep;
+
+                if (consumerToLag.get(memberDescription) < (consumptionratePerConsumer * waitingTime)) {
+                    log.info("The magic formula for consumer {} does  hold I am going to down scale by one for now as trial",
+                            memberDescription.consumerId());
+
+                    try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
+                        ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
+                        k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
+                        int replicas = k8s.apps().deployments().inNamespace("default").withName("cons1pss").get().getSpec().getReplicas();
+                        if (replicas > 1) {
+                            k8s.apps().deployments().inNamespace("default").withName("cons1pss").scale(replicas - 1);
+                            // firstIteration = true;
+                            scaled = true;
+                            // recheck is this is needed....
+                            sleep = 2 * sleep;
+                            break;
+
+
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+
+                    /////////////////////////////////////////////////////////////////////////////////////////
+
+
+     // when downscaling delete the consumer with minimum lag
+    static MemberDescription getConsumeWithLowestLag( Map<MemberDescription, Long> consumerToLag) {
+        Map.Entry<MemberDescription, Long> min = null;
+        for (Map.Entry<MemberDescription, Long> entry : consumerToLag.entrySet()) {
+            if (min == null || min.getValue() > entry.getValue()) {
+                min = entry;
+            }
+        }
+        return min.getKey();
+    }
+
+
+
+    // when downscaling delete the consumer with minimum lag
+    static  MemberDescription getConsumeWithLargestLag(Map<MemberDescription, Long> consumerToLag) {
+        Map.Entry<MemberDescription, Long> max = null;
+        for (Map.Entry<MemberDescription, Long> entry : consumerToLag.entrySet()) {
+            if (max  == null || max.getValue() < entry.getValue()) {
+                max = entry;
+            }
+        }
+        return max.getKey();
+
     }
 
 
