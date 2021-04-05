@@ -34,6 +34,9 @@ public class Scaler {
 
     public static Map<TopicPartition, Long> partitionToLag = new HashMap<>();
 
+    public static Map<MemberDescription, Float> maxConsumptionRatePerConsumer = new HashMap<>();
+
+
     static boolean  firstIteration = true;
     static Long sleep;
     static Long waitingTime;
@@ -73,6 +76,8 @@ public class Scaler {
         props.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, 1000);
         props.put(AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, 1000);
         admin   = AdminClient.create(props);
+
+
 
         ///////////////////////////////////////////////////////////////////////////////////////
 
@@ -158,6 +163,10 @@ public class Scaler {
             Map<String, ConsumerGroupDescription> consumerGroupDescriptionMap = futureOfDescribeConsumerGroupsResult.get();
 
            //compute lag per consumer
+
+            log.info(" =========================================");
+            log.info(" Member consumer to partitions assignments");
+            log.info(" ========================================");
             for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
                 MemberAssignment memberAssignment = memberDescription.assignment();
                 log.info("Member {} has the following assignments", memberDescription.consumerId());
@@ -170,44 +179,52 @@ public class Scaler {
                 lag = 0L;
             }
 
+            log.info(" ========================================");
 
+
+            log.info(" =======================================");
             log.info(" Lag per consumer");
+            log.info(" =======================================");
 
-          for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
-             log.info("the total offsets for partitions owned by  member {} is  {}", memberDescription.consumerId(),
+
+            for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
+             log.info("The total lag  for partitions owned by  member {} is  {}", memberDescription.consumerId(),
                       consumerToLag.get(memberDescription));
           }
 
-          log.info("=======================================");
+          log.info("================================================");
+
+
 
 
 
             if (! firstIteration) {
                 scaleDecision(consumerGroupDescriptionMap, consumerToLag);
             } else {
-                log.info("this is First iteration no scaling decisions");
-            }
+                log.info("This is First iteration no scaling decisions");
+                }
+
 
 
             for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
-               // log.info("the total offsets for partitions owend by  member {} is  {}", memberDescription.consumerId(),
-                        consumerToLag.put(memberDescription, 0L);
+                // log.info("the total offsets for partitions owend by  member {} is  {}", memberDescription.consumerId(),
+                consumerToLag.put(memberDescription, 0L);
+                maxConsumptionRatePerConsumer.putIfAbsent(memberDescription, 0.0f);
+
             }
 
             firstIteration = false;
+            log.info("Sleeping for sleep {}", sleep);
+
             Thread.sleep(sleep);
 
 
             if (scaled) {
-                log.info("Sleeping for sleep {}", sleep);
                 firstIteration = true;
                 scaled = false;
                 //sleep = sleep/2;
             } else {
                 log.info("we did not scale");
-
-                log.info("Sleeping for sleep {}", sleep);
-
             }
 
         }
@@ -235,17 +252,33 @@ public class Scaler {
                 totalecoff += currentPartitionToLastOffset.get(tp);
             }
 
-            float consumptionratePerConsumer = (float) (totalcoff - totalpoff) / sleep;
-            float arrivalratePerConsumer = (float) (totalecoff - totalepoff) / sleep;
+            float consumptionRatePerConsumer = (float) (totalcoff - totalpoff) / sleep;
+            float arrivalRatePerConsumer = (float) (totalecoff - totalepoff) / sleep;
+
+            if(arrivalRatePerConsumer >= consumptionRatePerConsumer) {
+                // TODO do something
+            }
+
+
+
 
 
             log.info("The consumption rate of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
-                    consumptionratePerConsumer * 1000);
+                    consumptionRatePerConsumer * 1000);
             log.info("The arrival  rate to partitions of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
-                    arrivalratePerConsumer * 1000);
+                    arrivalRatePerConsumer * 1000);
+
+           /* if (maxConsumptionRatePerConsumer.get(memberDescription) == null) {
+                log.info("maxConsumptionRatePerConsumer.get(memberDescription) {} = null", memberDescription);
+            } else if(consumptionRatePerConsumer > maxConsumptionRatePerConsumer.get(memberDescription) ) {
+                log.info("current consumer rate {} > max consumer rate {} swapping:", consumptionRatePerConsumer * 1000,
+                        maxConsumptionRatePerConsumer.get(memberDescription) * 1000 );
+                maxConsumptionRatePerConsumer.put(memberDescription, consumptionRatePerConsumer);
+            }*/
 
 
-            if (consumerToLag.get(memberDescription) > (consumptionratePerConsumer * waitingTime)) {
+            if (consumerToLag.get(memberDescription) > /*(maxConsumptionRatePerConsumer.get(memberDescription)*/
+                    consumptionRatePerConsumer* waitingTime) {
                 log.info("The magic formula for consumer {} does NOT hold I am going to scale by one for now",
                         memberDescription.consumerId());
 
@@ -264,7 +297,6 @@ public class Scaler {
                     }
                 } else {
                     log.info("Consumers are equal  to nb partitions we can not scale anymore");
-
                 }
 
             }
@@ -281,6 +313,7 @@ public class Scaler {
                 long totalepoff = 0;
                 long totalecoff = 0;
 
+
                 for (TopicPartition tp : memberDescription.assignment().topicPartitions()) {
                     totalpoff += previousPartitionToCommittedOffset.get(tp);
                     totalcoff += currentPartitionToCommittedOffset.get(tp);
@@ -290,8 +323,32 @@ public class Scaler {
 
                 float consumptionRatePerConsumer = (float) (totalcoff - totalpoff) / sleep;
                 float arrivalRatePerConsumer = (float) (totalecoff - totalepoff) / sleep;
+                log.info("The consumption rate of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
+                        consumptionRatePerConsumer * 1000);
+                log.info("The arrival  rate to partitions of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
+                        arrivalRatePerConsumer * 1000);
 
-                if (consumerToLag.get(memberDescription) < (consumptionRatePerConsumer * waitingTime)) {
+
+                ////////////////////////////////////////////////////////////////////////////////////////
+               /*   if (maxConsumptionRatePerConsumer.containsKey(memberDescription)) {
+                      log.info("maxConsumptionRatePerConsumer.get(memberDescription) {} = null", memberDescription);
+                  } else if (consumptionRatePerConsumer > maxConsumptionRatePerConsumer.get(memberDescription) ) {
+                    log.info("current consumer rate {} > max consumer rate {} swapping:",consumptionRatePerConsumer *1000,
+                            maxConsumptionRatePerConsumer.get(memberDescription) *1000 );
+                    maxConsumptionRatePerConsumer.put(memberDescription, consumptionRatePerConsumer);
+                }*/
+
+
+                if(arrivalRatePerConsumer >= consumptionRatePerConsumer) {
+                    log.info("I am not going to downscale consumer {} since  arrivalRatePerConsumer >= " +
+                            "consumptionRatePerConsumer", memberDescription.consumerId());
+                    continue;
+                }
+
+
+
+                if (consumerToLag.get(memberDescription) < /*(maxConsumptionRatePerConsumer.get(memberDescription)*/
+                        consumptionRatePerConsumer* waitingTime) {
                     log.info("The magic formula for consumer {} does hold I am going to down scale by one for now as trial",
                             memberDescription.consumerId());
 
