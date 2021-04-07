@@ -58,23 +58,15 @@ public class Scaler {
         cluster = System.getenv("CLUSTER");
         //consumerGroup = System.getenv("CONSUMER_GROUP");
 
-
-
         log.info("sleep is {}", sleep);
         log.info("waiting time  is {}", waitingTime);
         log.info("topic is  {}", waitingTime);
         log.info(" consumerGroup {}", waitingTime);
 
-
-
-
-
-
-
         Properties props = new Properties();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "my-cluster-kafka-bootstrap:9092");
-        props.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, 1000);
-        props.put(AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, 1000);
+        props.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, 3000);
+        props.put(AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, 3000);
         admin   = AdminClient.create(props);
 
 
@@ -82,6 +74,10 @@ public class Scaler {
         ///////////////////////////////////////////////////////////////////////////////////////
 
         while (true) {
+
+
+            log.info("====================================Start Iteration==============================================");
+
 
             Map<TopicPartition, OffsetAndMetadata> offsets =
                     admin.listConsumerGroupOffsets(CONSUMER_GROUP)
@@ -91,6 +87,8 @@ public class Scaler {
 
             Map<TopicPartition, OffsetSpec> requestLatestOffsets = new HashMap<>();
 
+
+            //consider removing and and use putifabsent
             for (TopicPartition tp : offsets.keySet()) {
                 requestLatestOffsets.put(tp, OffsetSpec.latest());
                 partitionToLag.put(tp, 0L);
@@ -104,7 +102,6 @@ public class Scaler {
                 long committedOffset = e.getValue().offset();
                 long latestOffset = latestOffsets.get(e.getKey()).offset();
                 long lag = latestOffset - committedOffset;
-              //previousPartitionToCommittedOffset.put(e.getKey(), );
 
                 if (!firstIteration) {
                     previousPartitionToCommittedOffset.put(e.getKey(), currentPartitionToCommittedOffset.get(e.getKey()));
@@ -114,41 +111,29 @@ public class Scaler {
                 currentPartitionToCommittedOffset.put(e.getKey(), committedOffset);
                 currentPartitionToLastOffset.put(e.getKey(), latestOffset);
                 partitionToLag.put(e.getKey(), lag);
+            }
 
-                log.info("Consumer group " + CONSUMER_GROUP
-                        + " has committed offset " + committedOffset
-                        + " to topic " + topic + " partition " + e.getKey().partition()
-                        + ". The latest offset in the partition is "
-                        + latestOffset + " so consumer group is "
-                        + (lag) + " records behind");
-          }
-
-
+            //to be removed for debugging and logging purposes.
             if (! firstIteration) {
                 for (Map.Entry<TopicPartition, Long> entry : previousPartitionToCommittedOffset.entrySet()) {
                     log.info("For partition {} previousCommittedOffsets = {}", entry.getKey(),
                             previousPartitionToCommittedOffset.get(entry.getKey()));
-
                     log.info(" For partition {} currentCommittedOffsets = {}", entry.getKey(),
                             currentPartitionToCommittedOffset.get(entry.getKey()));
-
                     //log latest produced offset
                     log.info("For partition {} previousEndOffsets = {}", entry.getKey(),
                             previousPartitionToLastOffset.get(entry.getKey()));
-
                     log.info(" For partition {} currentEndOffsets = {}", entry.getKey(),
                             currentPartitionToLastOffset.get(entry.getKey()));
-
-
                     log.info("Partition {} has the following lag {}", entry.getKey().partition() ,
                             partitionToLag.get((entry.getKey())));
                 }
             }
 
 
-
-
-
+            //////////////////////////////////////////////////////////////////////
+            // consumer group statistics
+            /////////////////////////////////////////////////////////////////////
 
             log.info(" consumer group descriptions: ");
 
@@ -162,7 +147,7 @@ public class Scaler {
                     describeConsumerGroupsResult.all();
             Map<String, ConsumerGroupDescription> consumerGroupDescriptionMap = futureOfDescribeConsumerGroupsResult.get();
 
-           //compute lag per consumer
+            //compute lag per consumer
 
             log.info(" =========================================");
             log.info(" Member consumer to partitions assignments");
@@ -172,14 +157,13 @@ public class Scaler {
                 log.info("Member {} has the following assignments", memberDescription.consumerId());
                 for (TopicPartition tp : memberAssignment.topicPartitions()) {
                     log.info("\tpartition {}", tp.toString());
-                     lag += partitionToLag.get(tp);
+                    lag += partitionToLag.get(tp);
                 }
 
                 consumerToLag.putIfAbsent(memberDescription, lag);
                 lag = 0L;
             }
 
-            log.info(" ========================================");
 
 
             log.info(" =======================================");
@@ -188,30 +172,45 @@ public class Scaler {
 
 
             for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
-             log.info("The total lag  for partitions owned by  member {} is  {}", memberDescription.consumerId(),
-                      consumerToLag.get(memberDescription));
-          }
+                log.info("The total lag  for partitions owned by  member {} is  {}", memberDescription.consumerId(),
+                        consumerToLag.get(memberDescription));
+            }
 
-          log.info("================================================");
+            log.info("================================================");
 
 
+            ///////////////////////////////////////////////////////////
+            // get average consumer to be used as estimation for newly created consumers...
+            float max =0f;
+            for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
+                 if(max <  maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f))
+                    max =  maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f);
 
+                // log.info("the total offsets for partitions owend by  member {} is  {}", memberDescription.consumerId(),
+            }
+
+
+            log.info("Average Consumer is : {}", max);
+
+
+            /////////////////////////////////////////////////////
+
+            for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
+                // log.info("the total offsets for partitions owend by  member {} is  {}", memberDescription.consumerId(),
+                consumerToLag.put(memberDescription, 0L);
+                maxConsumptionRatePerConsumer.putIfAbsent(memberDescription, max);
+            }
 
 
             if (! firstIteration) {
                 scaleDecision(consumerGroupDescriptionMap, consumerToLag);
             } else {
                 log.info("This is First iteration no scaling decisions");
-                }
-
-
-
-            for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
-                // log.info("the total offsets for partitions owend by  member {} is  {}", memberDescription.consumerId(),
-                consumerToLag.put(memberDescription, 0L);
-                maxConsumptionRatePerConsumer.putIfAbsent(memberDescription, 0.0f);
-
             }
+
+
+
+
 
             firstIteration = false;
             log.info("Sleeping for sleep {}", sleep);
@@ -226,8 +225,13 @@ public class Scaler {
             } else {
                 log.info("we did not scale");
             }
+            log.info("====================================End Iteration==============================================");
+
 
         }
+
+
+
 
     }
 
@@ -237,6 +241,15 @@ public class Scaler {
                                Map<MemberDescription, Long> consumerToLag) {
 
         int size = consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members().size();
+
+
+        for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
+
+            log.info("Logging current consumer rates:");
+
+            log.info("current maximum consumption rate for consumer {} is {}, ", memberDescription,
+                    maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f) * 1000);
+        }
 
         for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
 
@@ -252,33 +265,31 @@ public class Scaler {
                 totalecoff += currentPartitionToLastOffset.get(tp);
             }
 
+
+
             float consumptionRatePerConsumer = (float) (totalcoff - totalpoff) / sleep;
             float arrivalRatePerConsumer = (float) (totalecoff - totalepoff) / sleep;
 
-            if(arrivalRatePerConsumer >= consumptionRatePerConsumer) {
+            if (arrivalRatePerConsumer >= consumptionRatePerConsumer) {
                 // TODO do something
             }
 
 
-
-
-
-            log.info("The consumption rate of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
+            log.info("Current consumption rate of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
                     consumptionRatePerConsumer * 1000);
-            log.info("The arrival  rate to partitions of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
+            log.info("Current  arrival  rate to partitions of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
                     arrivalRatePerConsumer * 1000);
 
-           /* if (maxConsumptionRatePerConsumer.get(memberDescription) == null) {
-                log.info("maxConsumptionRatePerConsumer.get(memberDescription) {} = null", memberDescription);
-            } else if(consumptionRatePerConsumer > maxConsumptionRatePerConsumer.get(memberDescription) ) {
+            if (consumptionRatePerConsumer > maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f)) {
                 log.info("current consumer rate {} > max consumer rate {} swapping:", consumptionRatePerConsumer * 1000,
-                        maxConsumptionRatePerConsumer.get(memberDescription) * 1000 );
+                        maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f) * 1000);
                 maxConsumptionRatePerConsumer.put(memberDescription, consumptionRatePerConsumer);
-            }*/
+            }
 
 
-            if (consumerToLag.get(memberDescription) > /*(maxConsumptionRatePerConsumer.get(memberDescription)*/
-                    consumptionRatePerConsumer* waitingTime) {
+            if (consumerToLag.get(memberDescription) > (maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f)))
+            /* consumptionRatePerConsumer * waitingTime)*/
+            {
                 log.info("The magic formula for consumer {} does NOT hold I am going to scale by one for now",
                         memberDescription.consumerId());
 
@@ -290,22 +301,20 @@ public class Scaler {
                         k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
                         k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale(size + 1);
                         scaled = true;
-
                         // is that needed, ? a cool down period?
                         //sleep = 2 * sleep;
                         break;
                     }
                 } else {
-                    log.info("Consumers are equal  to nb partitions we can not scale anymore");
+                    log.info("Consumers are equal to nb partitions we can not scale anymore");
                 }
 
             }
         }
 
-        ///////////////////////////////////////////////////////////////////////////////////////////
+        ///////////////////////////////////////////////////////////////////////////////////////////////////
 
         if (!scaled) {
-
             for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
 
                 long totalpoff = 0;
@@ -323,61 +332,63 @@ public class Scaler {
 
                 float consumptionRatePerConsumer = (float) (totalcoff - totalpoff) / sleep;
                 float arrivalRatePerConsumer = (float) (totalecoff - totalepoff) / sleep;
-                log.info("The consumption rate of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
+
+
+                log.info("Current consumption rate of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
                         consumptionRatePerConsumer * 1000);
-                log.info("The arrival  rate to partitions of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
+                log.info("Current  arrival  rate to partitions of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
                         arrivalRatePerConsumer * 1000);
 
 
-                ////////////////////////////////////////////////////////////////////////////////////////
-               /*   if (maxConsumptionRatePerConsumer.containsKey(memberDescription)) {
-                      log.info("maxConsumptionRatePerConsumer.get(memberDescription) {} = null", memberDescription);
-                  } else if (consumptionRatePerConsumer > maxConsumptionRatePerConsumer.get(memberDescription) ) {
-                    log.info("current consumer rate {} > max consumer rate {} swapping:",consumptionRatePerConsumer *1000,
-                            maxConsumptionRatePerConsumer.get(memberDescription) *1000 );
+                /////////////////////////////////////////////////////////////////////////////////////////////
+
+                if (consumptionRatePerConsumer > maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f)) {
+                    log.info("current consumer rate {} > max consumer rate {} swapping:", consumptionRatePerConsumer * 1000,
+                            maxConsumptionRatePerConsumer.get(memberDescription) * 1000);
                     maxConsumptionRatePerConsumer.put(memberDescription, consumptionRatePerConsumer);
-                }*/
-
-
-                if(arrivalRatePerConsumer >= consumptionRatePerConsumer) {
-                    log.info("I am not going to downscale consumer {} since  arrivalRatePerConsumer >= " +
-                            "consumptionRatePerConsumer", memberDescription.consumerId());
-                    continue;
                 }
 
 
 
-                if (consumerToLag.get(memberDescription) < /*(maxConsumptionRatePerConsumer.get(memberDescription)*/
-                        consumptionRatePerConsumer* waitingTime) {
-                    log.info("The magic formula for consumer {} does hold I am going to down scale by one for now as trial",
-                            memberDescription.consumerId());
+/*                if(arrivalRatePerConsumer >= consumptionRatePerConsumer) {
+                    log.info("I am not going to downscale consumer {} since  arrivalRatePerConsumer >= " +
+                            "consumptionRatePerConsumer", memberDescription.consumerId());
+                    continue;
+                }*/
 
-                    try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
-                        ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
-                        k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
-                        int replicas = k8s.apps().deployments().inNamespace("default").withName("cons1persec").get().getSpec().getReplicas();
-                        if (replicas > 1) {
-                            k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale(replicas - 1);
-                            // firstIteration = true;
-                            scaled = true;
-                            // recheck is this is needed....
-                            //sleep = 2 * sleep;
-                            break;
-                        } else {
-                            log.info("Not going to scale since replicas already one");
+
+                    if (consumerToLag.get(memberDescription) < (maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f)))
+                        /*consumptionRatePerConsumer * waitingTime)*/ {
+                        log.info("The magic formula for consumer {} does hold I am going to down scale by one for now as trial",
+                                memberDescription.consumerId());
+
+                        try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
+                            ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
+                            k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
+                            int replicas = k8s.apps().deployments().inNamespace("default").withName("cons1persec").get().getSpec().getReplicas();
+                            if (replicas > 1) {
+                                k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale(replicas - 1);
+                                // firstIteration = true;
+                                scaled = true;
+                                // recheck is this is needed....
+                                //sleep = 2 * sleep;
+                                break;
+                            } else {
+                                log.info("Not going to scale since replicas already one");
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
 
 
-                    /////////////////////////////////////////////////////////////////////////////////////////
+
+    /////////////////////////////////////////////////////////////////////////////////////////
 
 
-     // when downscaling delete the consumer with minimum lag
+    // when downscaling delete the consumer with minimum lag
     static MemberDescription getConsumeWithLowestLag( Map<MemberDescription, Long> consumerToLag) {
         Map.Entry<MemberDescription, Long> min = null;
         for (Map.Entry<MemberDescription, Long> entry : consumerToLag.entrySet()) {
