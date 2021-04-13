@@ -367,11 +367,11 @@ public class Scaler {
 
 
 
-/*                if(arrivalRatePerConsumer >= consumptionRatePerConsumer) {
+                if(arrivalRatePerConsumer >= consumptionRatePerConsumer) {
                     log.info("I am not going to downscale consumer {} since  arrivalRatePerConsumer >= " +
                             "consumptionRatePerConsumer", memberDescription.consumerId());
                     continue;
-                }*/
+                }
 
 
                     if (consumerToLag.get(memberDescription) < /*(maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f)))*/
