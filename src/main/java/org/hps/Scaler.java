@@ -62,8 +62,7 @@ public class Scaler {
     public static void main(String[] args) throws ExecutionException, InterruptedException {
 
 
-        //TODO creating a metaconsumer to enforce rebalance
-
+        //TODO Externalize topic, cluster name, and all configurations
 
         sleep = Long.valueOf(System.getenv("SLEEP"));
         waitingTime = Long.valueOf(System.getenv("WAITING_TIME"));
@@ -82,8 +81,6 @@ public class Scaler {
         props.put(AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, 3000);
         admin   = AdminClient.create(props);
 
-
-
         ///////////////////////////////////////////////////////////////////////////////////////
 
         while (true) {
@@ -91,11 +88,12 @@ public class Scaler {
             Map<TopicPartition, OffsetAndMetadata> offsets =
                     admin.listConsumerGroupOffsets(CONSUMER_GROUP)
                             .partitionsToOffsetAndMetadata().get();
+
             numberOfPartitions = offsets.size();
 
             Map<TopicPartition, OffsetSpec> requestLatestOffsets = new HashMap<>();
 
-            //consider removing and and use putifabsent
+            //initialize consumer to lag to 0
             for (TopicPartition tp : offsets.keySet()) {
                 requestLatestOffsets.put(tp, OffsetSpec.latest());
                 partitionToLag.put(tp, 0L);
@@ -103,9 +101,6 @@ public class Scaler {
 
             Map<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> latestOffsets =
                     admin.listOffsets(requestLatestOffsets).all().get();
-
-
-
             //////////////////////////////////////////////////////////////////////
             // Partition Statistics
             /////////////////////////////////////////////////////////////////////
@@ -127,7 +122,6 @@ public class Scaler {
             //////////////////////////////////////////////////////////////////////
             // consumer group statistics
             /////////////////////////////////////////////////////////////////////
-
             log.info(" consumer group descriptions: ");
 
             /* lag per consumer */
@@ -179,11 +173,6 @@ public class Scaler {
             }
 
             log.info("================================================");
-
-
-
-
-
 
 
             if(!firstIteration ) {
@@ -310,15 +299,13 @@ public class Scaler {
         // TODO ConsumerGroupDescriptionMap by descending lag with
         // TODO with respect to consumertolag
         ///////////////////////////////////////////////////////////////
-
+        log.info("print sorted consumers by lag");
+        log.info("=================================:");
         for (Map.Entry<MemberDescription, Long> memberDescription : temp.entrySet()) {
-            log.info("print sorted consumers by lag");
-            log.info("=================================:");
             log.info("sorted consumer id {} has the following lag {}", memberDescription.getKey().consumerId(),
                     memberDescription.getValue());
-            log.info("=================================:");
-
         }
+        log.info("=================================:");
 
 
 
