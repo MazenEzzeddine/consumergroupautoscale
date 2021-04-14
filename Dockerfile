@@ -11,6 +11,6 @@ ENV VERSION ${version}
 #COPY ./scripts/ /bin
 COPY ./src/main/resources/log4j2.properties /bin/log4j2.properties
 
-ADD target/AdminClientExample-1.0-SNAPSHOT.jar /
+ADD target/KafkaControllerAndScaler-1.0-SNAPSHOT.jar /
 
-CMD ["java","-jar" , "/AdminClientExample-1.0-SNAPSHOT.jar"]
+CMD ["java","-jar" , "/KafkaControllerAndScaler-1.0-SNAPSHOT.jar"]
