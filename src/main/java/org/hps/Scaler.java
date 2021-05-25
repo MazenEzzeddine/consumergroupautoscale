@@ -572,6 +572,7 @@ static void scaleDecision2 ( Map<String, ConsumerGroupDescription> consumerGroup
             if (replicas > 1) {
                 k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale(replicas - 1);
                 // firstIteration = true;
+
                 scaled = true;
                 start = Instant.now();
 
