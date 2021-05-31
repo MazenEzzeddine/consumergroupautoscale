@@ -450,20 +450,20 @@ public class Scaler {
 
         float totalConsumptionRate = 0;
         float totalArrivalRate = 0;
-        float totallag = 0;
+        long totallag = 0;
 
         int size = consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members().size();
 
-        log.info("Logging current consumer rates:");
-        log.info("=================================:");
-
-
-        for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
-            log.info("current maximum consumption rate for consumer {} is {}, ", memberDescription,
-                    maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f) * 1000);
-        }
-
-        log.info("=================================:");
+//        log.info("Logging current consumer rates:");
+//        log.info("=================================:");
+//
+//
+//        for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
+//            log.info("current maximum consumption rate for consumer {} is {}, ", memberDescription,
+//                    maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f) * 1000);
+//        }
+//
+//        log.info("=================================:");
 
 
         for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
@@ -502,8 +502,9 @@ public class Scaler {
 
             totalConsumptionRate += consumptionRatePerConsumer;
             totalArrivalRate += arrivalRatePerConsumer;
+            totallag += consumerToLag.get(memberDescription);
 
-            log.info("totalArrivalRate {}, totalconsumptionRate{}", totalConsumptionRate * 1000, totalArrivalRate * 1000);
+            log.info("totalArrivalRate {}, totalconsumptionRate {}, totallag {}", totalArrivalRate * 1000,totalConsumptionRate * 1000, totallag);
 
 
 
@@ -542,60 +543,73 @@ public class Scaler {
 
 
 
-	/*	for (int j=1; j<4; j++)
-			Xx[0][j]= Xx[0][j-1];*/
-
-/*    if(iteration<4) {
-        Xx[0][iteration] = Double.parseDouble(String.valueOf(totalArrivalRate));
-
-        log.info("no prediction model is not filled yet");
-    } else  {*/
-
-        if (iteration < 4) {
-
-            log.info("no prediction iteration less than 4");
-            log.info("iteration = {}", iteration);
-            log.info("total arrivals since the last monitoring interval {}", (float) (totalArrivalRate * sleep));
-
-            for (int j = 0; j < 3; j++)
-                Xx[0][j] = Xx[0][j + 1];
-
-            double y1 = Double.parseDouble(String.valueOf((float) (totalArrivalRate * sleep)));
-            Xx[0][3] = y1;
-
-            X = new Array2DRowRealMatrix(Xx);
-
-            log.info("X = {}", X);
-
-        } else {
-
-            log.info("before y");
-            double y1 = Double.parseDouble(String.valueOf(totalArrivalRate * sleep));
-            log.info("after y");
-
-            log.info("total arrival  of authors since last interval {}", (float) (totalArrivalRate * sleep));
-
-
-            for (int j = 0; j < 3; j++)
-                Xx[0][j] = Xx[0][j + 1];
-            Xx[0][3] = y1;
-
-
-            X = new Array2DRowRealMatrix(Xx);
-
-            log.info("X = {}", X);
-
-            rls.add_obs(X.transpose(), y1);
-
-            double prediction = (rls.getW().transpose().multiply(X.transpose())).getEntry(0, 0);
-
-            log.info(" iteration {} current total arrival since last monitoring interval {}, my prediction for the next one {}", iteration,
-                    (float) (totalArrivalRate * sleep), prediction);
-        }
+	///////////////////////////////////////////////////prediction code
+//        if (iteration < 3) {
+//
+//            log.info("no prediction iteration less than 4");
+//            log.info("iteration = {}", iteration);
+//            log.info("total arrivals since the last monitoring interval {}", (float) (totalArrivalRate * sleep));
+//
+//            for (int j = 0; j < 3; j++)
+//                Xx[0][j] = Xx[0][j + 1];
+//
+//            double y1 = Double.parseDouble(String.valueOf((totalArrivalRate * sleep)));
+//            Xx[0][3] = y1;
+//
+//            X = new Array2DRowRealMatrix(Xx);
+//
+//
+//
+//            log.info("X = {}", X);
+//
+//            log.info( " iteration {} Authorizations consumed  since the last monitoring interval {}", iteration,  (float) (totalConsumptionRate * sleep));
+//            //rls.add_obs(X.transpose(), y1);
+//
+//
+//        } else {
+//
+//            log.info("before y");
+//            double y1 = Double.parseDouble(String.valueOf(totalArrivalRate * sleep));
+//            log.info("after y");
+//
+//            log.info("total arrival  of authors since last interval {}", (float) (totalArrivalRate * sleep));
+//
+//
+//            for (int j = 0; j < 3; j++)
+//                Xx[0][j] = Xx[0][j + 1];
+//            Xx[0][3] = y1;
+//
+//
+//            X = new Array2DRowRealMatrix(Xx);
+//
+//            log.info("X = {}", X);
+//
+//           // rls.add_obs(X.transpose(), y1);
+//
+//            double prediction = (rls.getW().transpose().multiply(X.transpose())).getEntry(0, 0);
+//
+//            log.info(" iteration {} current total arrival since last monitoring interval {}, my prediction for the next one {}", iteration,
+//                    (float) (totalArrivalRate * sleep), prediction);
+//
+//            log.info( " iteration {}  Authorizations consumed  since the last monitoring interval {}", iteration , (float) (totalConsumptionRate * sleep));
+//            log.info( " iteration {}  lag  observed  since the last monitoring interval {}", iteration , totallag);
+//
+//
+//            rls.add_obs(X.transpose(), y1);
+//
+//        }
         iteration++;
 
+      //we need the maximim total consulmer aret
+        // when there is a lag it is operating at maximum
 
-  /*  if (totalArrivalRate > totalConsumptionRate) {
+        log.info(" total current  arrivals per seconds  {} , total  current  consumers  per seonds  {}",
+                totalArrivalRate * 1000, totalConsumptionRate * 1000);
+        log.info("  total current  arrivals for the last 15 seconds {} , total   current  consumeed messages for last 15 messages  {}",
+                totalArrivalRate * 15 *1000, totalConsumptionRate * 15 * 1000);
+
+    if (totalArrivalRate * 15 * 1000 > 20 * size) {
+        // if (totalArrivalRate > totalConsumptionRate) {
 
         if (size < numberOfPartitions) {
             log.info("Consumers are less than nb partition we can scale");
@@ -605,6 +619,8 @@ public class Scaler {
                 k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale(size + 1);
                 scaled = true;
                 start = Instant.now();
+                log.info("since total current  arrivals {} is greater than current  consumers  I up scaled  by one {}",
+                        totalArrivalRate * 1000, totalConsumptionRate * 1000);
                 //TODO
                 // is that needed, ? a cool down period?
                 //sleep = 2 * sleep;
@@ -617,7 +633,9 @@ public class Scaler {
     log.info("Next consumer scale up");
     log.info("=================================:");
 
-}  else if (totalArrivalRate < totalConsumptionRate) {
+}  //else if (totalArrivalRate < totalConsumptionRate) {
+
+        else if (totalArrivalRate *15 *1000 < /*totalConsumptionRate*/ 20 * size && totalArrivalRate *15 *1000 < 20* (size-1)) {
 
 
         try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
@@ -631,10 +649,13 @@ public class Scaler {
                 scaled = true;
                 start = Instant.now();
 
+                log.info("since total current  arrivals {} is smaller than current  cosumer I down scaled  by one {}",
+                        totalArrivalRate *1000, totalConsumptionRate*1000);
+
                 // recheck is this is needed....
                 //sleep = 2 * sleep
             } else {
-                log.info("Not going to scale since replicas already one");
+                log.info("Not going to  down scale since replicas already one");
             }
         }
 
@@ -643,7 +664,6 @@ public class Scaler {
     log.info("=================================:");
 
     }
-*/
 
 
 
