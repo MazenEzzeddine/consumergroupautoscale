@@ -106,6 +106,7 @@ public class Scaler {
 
             numberOfPartitions = offsets.size();
 
+
             Map<TopicPartition, OffsetSpec> requestLatestOffsets = new HashMap<>();
 
             //initialize consumer to lag to 0
