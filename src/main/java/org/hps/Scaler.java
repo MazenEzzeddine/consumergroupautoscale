@@ -21,16 +21,17 @@ import org.apache.logging.log4j.LogManager;
 public class Scaler {
     static RLS rls;
     static double[][] Xx;
-    static double [] pred;
+    static double[] pred;
     static RealMatrix X;
     static int iteration = 0;
-    Scaler(){
+
+    Scaler() {
     }
 
     public static final String CONSUMER_GROUP = "testgroup3";
-    public static  int numberOfPartitions;
-    static boolean  scaled = false;
-    public static  AdminClient admin = null;
+    public static int numberOfPartitions;
+    static boolean scaled = false;
+    public static AdminClient admin = null;
     private static final Logger log = LogManager.getLogger(Scaler.class);
     public static Map<TopicPartition, Long> currentPartitionToCommittedOffset = new HashMap<>();
     public static Map<TopicPartition, Long> previousPartitionToCommittedOffset = new HashMap<>();
@@ -43,14 +44,16 @@ public class Scaler {
     public static Map<TopicPartition, Long> PartitionToCommittedOffset = new HashMap<>();
 
 
-    static boolean  firstIteration = true;
+    static boolean firstIteration = true;
     static Long sleep;
     static Long waitingTime;
     static String topic;
     static String cluster;
     static Long poll;
-    //static Long sla;
+    static Long SEC;
+    static String choice;
 
+    //static Long sla;
 
 
     private static Instant start = null;
@@ -66,6 +69,10 @@ public class Scaler {
         topic = System.getenv("TOPIC");
         cluster = System.getenv("CLUSTER");
         poll = Long.valueOf(System.getenv("POLL"));
+        SEC = Long.valueOf(System.getenv("SEC"));
+        choice = System.getenv("CHOICE");
+
+
         //sla = Long.valueOf(System.getenv("SLA"));
 
 
@@ -74,13 +81,16 @@ public class Scaler {
         log.info("sleep is {}", sleep);
         log.info("waiting time  is {}", waitingTime);
         log.info("topic is  {}", topic);
-        log.info(" consumerGroup {}", waitingTime);
+
+        log.info("poll is  {}", poll);
+        log.info("SEC is  {}", SEC);
+
 
         Properties props = new Properties();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "my-cluster-kafka-bootstrap:9092");
         props.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, 3000);
         props.put(AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, 3000);
-        admin   = AdminClient.create(props);
+        admin = AdminClient.create(props);
         /////////////////////////////////////////////////////////////
         rls = new RLS(4, 0.95);
         iteration = 0;
@@ -155,10 +165,10 @@ public class Scaler {
 
             // if a particular consumer is removed as a result of scaling decision remove
             Set<MemberDescription> previousConsumers = new HashSet<MemberDescription>(consumerToLag.keySet());
-            for(MemberDescription md : previousConsumers) {
-                    if(consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members().contains(md)){
-                        continue;
-                    }
+            for (MemberDescription md : previousConsumers) {
+                if (consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members().contains(md)) {
+                    continue;
+                }
 
                 consumerToLag.remove(md);
                 maxConsumptionRatePerConsumer.remove(md);
@@ -195,20 +205,35 @@ public class Scaler {
 
 
             if (!firstIteration) {
-                /*if (scaled) {
-                    Instant now = Instant.now();
-                    elapsedTime = Duration.between(start, now).toMinutes();
-                    log.info("start {}, now {}", start, now);
-                    log.info("Elapsed minutes since last scale {}", Duration.between(start, now).getSeconds());
-                    if (elapsedTime >= 1L) {
-                        scaled = false;
-                        scaleDecision2(consumerGroupDescriptionMap);
-                    }*/
-                scaleDecision3(consumerGroupDescriptionMap);
+//                if (scaled) {
+//                    Instant now = Instant.now();
+//                    elapsedTime = Duration.between(start, now).getSeconds();
+//                    log.info("start {}, now {}", start, now);
+//                    if (elapsedTime >= 30) {
+//                        scaled = false;
+                log.info("Yes scale decision NOT first iteration and/or scaled in previous ");
 
+                if(choice.equals("arr")) {
+                    scaleDecision2(consumerGroupDescriptionMap);
+                } else {
+                    scaleDecision3(consumerGroupDescriptionMap);
+                }
+
+                //scaleDecision3(consumerGroupDescriptionMap);
+                        //log.info("Scale decision Elapsed minutes since last scale {}", Duration.between(start, now).getSeconds());
+
+                    } else {
+
+                        log.info("No scale decision Looks first iteration and/or scaled in previous ");
+                        firstIteration = false;
+
+
+//                    }
+//                    //scaleDecision2(consumerGroupDescriptionMap);
+//                } else {
+//                    scaleDecision2(consumerGroupDescriptionMap);
+//                }
             }
-
-            firstIteration = false;
 
 
 
@@ -223,25 +248,9 @@ public class Scaler {
 
     }
 
-        /*    if(*//*!scaled &&*//* !firstIteration) {
-                log.info("calling scale decision neither scaled nor in first iteration");
-                scaleDecision2(consumerGroupDescriptionMap);
-            }
 
 
 
-        if (firstIteration) {
-            log.info("This is First iteration no scaling decisions");
-        }
-
-            firstIteration = false;
-            log.info("Sleeping for sleep {}", sleep);*/
-
-           /* if (scaled) {
-               log.info("looks like we are in the cool down period");
-            } else {
-                log.info("we did not scale though outside of the cool down period");
-            }*/
 
 
 
@@ -573,7 +582,7 @@ public class Scaler {
             log.info("=================================:");*/
         }
 
-        log.info("totalArrivalRate {}, totalconsumptionRate {}, totallag {}", totalArrivalRate*1000, totalConsumptionRate*1000, totallag);
+
 
 
 
@@ -648,9 +657,13 @@ public class Scaler {
         //if (totalArrivalRate * 15 * 1000 > 15 * size ) {
         // consumer is configured with maximum of messages per second consumption
 
-        log.info("shall we scale totalArrivalrate {}, current  consumption rate {}", totalArrivalRate *1000, /*size *poll **/totalConsumptionRate *1000);
+        log.info("totalArrivalRate {}, totalconsumptionRate {}, totallag {}",
+                totalArrivalRate*1000, totalConsumptionRate*1000, totallag);
 
-        if ((totalArrivalRate *1000) > (size *poll)) /*totalConsumptionRate *1000*/ {
+        log.info("shall we scale totalArrivalrate {}, max  consumption rate {}",
+                totalArrivalRate *1000, /*size *poll **/(size *poll)/(float)SEC);
+
+        if ((totalArrivalRate *1000) > ((size *poll)/(float)SEC)) /*totalConsumptionRate *1000*/ {
             if (size < numberOfPartitions) {
                 log.info("Consumers are less than nb partition we can scale");
                 try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
@@ -659,10 +672,11 @@ public class Scaler {
                     k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale(size + 1);
                     scaled = true;
                     start = Instant.now();
+                    firstIteration = true;
             /*    log.info("since  arrivals in the last 15 secs  {} is greater than   consumed messages in the last 15,  I up scaled  by one {}",
                         totalArrivalRate * 1000 *15, totalConsumptionRate * 1000 *15);*/
-                    log.info("since  arrival rate   {} is greater than  maximum consumed messages rate (size*poll) ,  I up scaled  by one {}",
-                            totalArrivalRate * 1000, /*size *poll*/ totalConsumptionRate *1000);
+                    log.info("since  arrival rate   {} is greater than  maximum consumed messages rate (size*poll/SEC) ,  I up scaled  by one {}",
+                            totalArrivalRate * 1000, /*size *poll*/ /*totalConsumptionRate *1000*/(size *poll)/(float)SEC);
                     //TODO
                     // is that needed, ? a cool down period?
                     //sleep = 2 * sleep;
@@ -680,7 +694,8 @@ public class Scaler {
         }  //else if (totalArrivalRate < totalConsumptionRate) {
         //add another condition for lah check
         //to be done Estimated total arrival rate for next monitoring interval time
-        else if (/*(totalArrivalRate *1000 < size *poll)*/ /*totalConsumptionRate *1000*/  (totalArrivalRate *1000)  < ((size-1) *poll)) /*totalConsumptionRate *1000*/ {
+        else if (/*(totalArrivalRate *1000 < size *poll)*/ /*totalConsumptionRate *1000*/
+                (totalArrivalRate *1000)  < (((size-1) *poll)/(float)SEC)) /*totalConsumptionRate *1000*/ {
             try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
                 ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
                 k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
@@ -690,10 +705,12 @@ public class Scaler {
                     // firstIteration = true;
 
                     scaled = true;
+                    firstIteration = true;
                     start = Instant.now();
 
-                    log.info("since   arrival rate {} is lower than max   consumption rate  with size -1 I down scaled  by one {}",
-                            totalArrivalRate * 1000, /*totalConsumptionRate *1000 */ /*size *poll*/ totalConsumptionRate *1000);
+                    log.info("since   arrival rate {} is lower than max   consumption rate  with size -1, I down scaled  by one {}",
+                            totalArrivalRate * 1000, /*totalConsumptionRate *1000 */ /*size *poll*/
+                            ((size-1) *poll)/(float)SEC);
 
 //                log.info("since  rate   arrivals {} is smaller  than current   rate  consummed I down scaled  by one {}",
 //                        totalArrivalRate *1000 /*15*/, totalConsumptionRate*1000/*15*/);
@@ -704,9 +721,6 @@ public class Scaler {
                     log.info("Not going to  down scale since replicas already one");
                 }
             }
-
-
-
         }
 
         log.info("quitting scale decision");
@@ -857,7 +871,6 @@ public class Scaler {
                 // TODO do something
             }
 
-            log.info("=================================:");
 
 
           /*  log.info("Current consumption rate of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
@@ -865,7 +878,8 @@ public class Scaler {
             log.info("Current  arrival  rate to partitions of consumer {} is equal to {} per  seconds ", memberDescription.consumerId(),
                     arrivalRatePerConsumer *1000);*/
 
-            if (consumptionRatePerConsumer > maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f)) {
+            if (consumptionRatePerConsumer >
+                    maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f)) {
             /*    log.info("current consumer rate {} > max consumer rate {} swapping:", consumptionRatePerConsumer *1000,
                         maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f) *1000);*/
                 maxConsumptionRatePerConsumer.put(memberDescription, consumptionRatePerConsumer);
@@ -875,39 +889,12 @@ public class Scaler {
             totalArrivalRate += arrivalRatePerConsumer;
             totallag += consumerToLag.get(memberDescription);
 
-
-
-
-            /* if (consumerToLag.get(memberDescription) > (maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f) * waitingTime))
-             *//*consumptionRatePerConsumer * waitingTime)*//* {
-                log.info("The magic formula for consumer {} does NOT hold I am going to scale by one for now : lag {}, " +
-                                "consumptionRatePerConsumer * waitingTime {} ", memberDescription.consumerId(),
-                        consumerToLag.get(memberDescription), *//*consumptionRatePerConsumer * waitingTime*//*
-                        (maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f) * waitingTime));
-
-                if (size < numberOfPartitions) {
-                    log.info("Consumers are less than nb partition we can scale");
-                    try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
-                        ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
-                        k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
-                        k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale(size + 1);
-                        scaled = true;
-                        start = Instant.now();
-                        //TODO
-                        // is that needed, ? a cool down period?
-                        //sleep = 2 * sleep;
-                        break;
-                    }
-                } else {
-                    log.info("Consumers are equal to nb partitions we can not scale anymore");
-                }
-
-            }
-            log.info("Next consumer scale up");
-            log.info("=================================:");*/
         }
 
-        log.info("totalArrivalRate {}, totalconsumptionRate {}, totallag {}", totalArrivalRate*1000, totalConsumptionRate*1000, totallag);
+        log.info("=================================:");
+
+
+
 
 
 
@@ -982,22 +969,33 @@ public class Scaler {
         //if (totalArrivalRate * 15 * 1000 > 15 * size ) {
         // consumer is configured with maximum of messages per second consumption
 
-        log.info("shall we scale totalArrivalrate {}, current  consumption rate {}", totalArrivalRate *1000, /*size *poll **/totalConsumptionRate *1000);
+        log.info("totalArrivalRate {}, totalconsumptionRate {}, totallag {}",
+                totalArrivalRate*1000, totalConsumptionRate*1000, totallag);
+
+        log.info("shall we scale totalArrivalrate {}, current  consumption rate {}",
+                totalArrivalRate *1000, /*size *poll **/totalConsumptionRate *1000);
 
        // if ((totalArrivalRate *1000) > (size *poll)) /*totalConsumptionRate *1000*/ {
-        if ((totallag) > (size *poll * waitingTime)) /*totalConsumptionRate *1000*/ {
+        if ((totallag*0.9) > (size *poll * waitingTime )) /*totalConsumptionRate *1000*/ {
+            log.info("totallag *0.9 {}, size *poll * waitingTime{}", totallag *0.9, size *poll * waitingTime);
+            double ratio = ((double)totallag) / ((double)(size *poll * waitingTime));
+            ratio = Math.ceil(ratio);
+            log.info("ratio after ceil {}", ratio);
+            //int needed = (int)ratio -size;
             if (size < numberOfPartitions) {
                 log.info("Consumers are less than nb partition we can scale");
                 try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
-                    ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
+                    ServiceAccount fabric8 =
+                            new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
                     k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
-                    k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale(size + 1);
+                    k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale((int)ratio);
                     scaled = true;
+                    firstIteration = true;
                     start = Instant.now();
             /*    log.info("since  arrivals in the last 15 secs  {} is greater than   consumed messages in the last 15,  I up scaled  by one {}",
                         totalArrivalRate * 1000 *15, totalConsumptionRate * 1000 *15);*/
-                    log.info("since  total lag   {} is violates the SLA   (size*poll ) ,  I up scaled  by one {}",
-                            totallag , /*size *poll*/ size *poll * waitingTime);
+                    log.info("since  total lag  *0.9 {} is violates the SLA   (size*poll ) {} ,  I up scaled  by ratio {}",
+                            totallag *0.9 , /*size *poll*/ size *poll * waitingTime, ratio);
                     //TODO
                     // is that needed, ? a cool down period?
                     //sleep = 2 * sleep;
@@ -1005,30 +1003,26 @@ public class Scaler {
             } else {
                 log.info("Consumers are equal to nb partitions we can not scale up anymore");
             }
-
-
-/*
-            log.info("End Iteration scale up");
-*/
-
-
         }  //else if (totalArrivalRate < totalConsumptionRate) {
         //add another condition for lah check
         //to be done Estimated total arrival rate for next monitoring interval time
-        else if (/*(totalArrivalRate *1000 < size *poll)*/ /*totalConsumptionRate *1000*/  totallag  < ((size-1) *poll*waitingTime)) /*totalConsumptionRate *1000*/ {
+        else if (/*(totalArrivalRate *1000 < size *poll)*/ /*totalConsumptionRate *1000*/
+                totallag *1.2 < ((size-2) *poll*waitingTime)) /*totalConsumptionRate *1000*/ {
             try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
                 ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
                 k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
                 int replicas = k8s.apps().deployments().inNamespace("default").withName("cons1persec").get().getSpec().getReplicas();
+
                 if (replicas > 1) {
                     k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale(replicas - 1);
                     // firstIteration = true;
 
                     scaled = true;
                     start = Instant.now();
-
-                    log.info("since   total lag {} does not violate the SLA if I removed a consumer (size-1) *poll*waitingTime,  I down scaled  by one {}",
-                            totallag , /*totalConsumptionRate *1000 */ /*size *poll*/ (size-1) *poll*waitingTime);
+                    firstIteration = true;
+                    log.info("since   total lag *1.2 {} does not violate the SLA if I removed 2 consumer " +
+                                    "(size-2) *poll*waitingTime,  I down scaled  by two {}",
+                            totallag * 1.2 , /*totalConsumptionRate *1000 */ /*size *poll*/ (size-2) *poll*waitingTime);
 
 //                log.info("since  rate   arrivals {} is smaller  than current   rate  consummed I down scaled  by one {}",
 //                        totalArrivalRate *1000 /*15*/, totalConsumptionRate*1000/*15*/);
@@ -1041,9 +1035,8 @@ public class Scaler {
             }
         } else {
 
-            log.info("there was no scaling action in thsi iteration");
+            log.info("There was no scaling action in this iteration");
         }
-
         log.info("=================================:");
 
 
