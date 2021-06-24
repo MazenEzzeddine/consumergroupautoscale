@@ -240,8 +240,6 @@ public class Scaler {
 
                         log.info("No scale decision Looks first iteration and/or scaled in previous ");
                         firstIteration = false;
-
-
 //                    }
 //                    //scaleDecision2(consumerGroupDescriptionMap);
 //                } else {
