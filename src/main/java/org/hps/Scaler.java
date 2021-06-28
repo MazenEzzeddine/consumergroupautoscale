@@ -55,6 +55,8 @@ public class Scaler {
     static Float uth;
     static Float dth;
 
+    static double prediction = 0;
+
     private static Instant start = null;
     static long elapsedTime;
 
@@ -86,7 +88,7 @@ public class Scaler {
         props.put(AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, 3000);
         admin = AdminClient.create(props);
         /////////////////////////////////////////////////////////////
-        rls = new RLS(4, 0.95);
+        rls = new RLS(4, 0.98);
         iteration = 0;
         Xx = new double[1][4];
 
@@ -186,12 +188,12 @@ public class Scaler {
 
 
 */       if(!firstIteration) {
-                //justPredict(consumerGroupDescriptionMap);
+                justPredict3(consumerGroupDescriptionMap);
             } else {
             firstIteration = false;
             }
 
-            justPredict(consumerGroupDescriptionMap);
+            //justPredict(consumerGroupDescriptionMap);
 
 
             log.info("sleeping for  {} secs", sleep);
@@ -261,10 +263,10 @@ public class Scaler {
 
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-     double prediction = 0 ;
+
         ///////////////////////////////////////////////////prediction code//////////////////////////////////////////
         if (iteration < 3) {
-            log.info("Iteration = {}", iteration);
+
 
 
 
@@ -274,9 +276,11 @@ public class Scaler {
 
             double y1 = Double.parseDouble(String.valueOf((totalecoff -totalepoff /* sleep*/)))  ;
 
-            log.info(" iteration {} last time  prediction   {}", iteration, (float) (prediction));
+            log.info(" iteration {} last time  prediction arrivals  {} and arrival rate {}", iteration, (float) (prediction), (float) prediction/sleep *1000) ;
 
-            log.info(" iteration {} current actual value of arrivals {}", iteration, y1);
+            log.info(" iteration {} current actual value of arrivals {} and current arrival rate = {}", iteration, y1, (float)y1/sleep * 1000);
+
+            log.info("Iteration = {} prediction accuracy {}", iteration, ((float) (prediction/sleep) * 1000)/((float)y1/sleep * 1000));
 
             rls.add_obs(X.transpose(), y1);
 
@@ -300,23 +304,27 @@ public class Scaler {
 
 
 
-            log.info(" arrivals since last iteration {}, is {}", iteration, (float) (totalecoff - totalepoff /* sleep)*/));
+            //log.info(" arrivals since last iteration {}, is {}", iteration, (float) (totalecoff - totalepoff /* sleep)*/));
 
-            log.info(" Iteration {} prediction for next arrivals  {}", iteration, (float) (prediction));
+            log.info(" Iteration {} prediction for next arrivals  {}, next arrival rate {}", iteration, (float) (prediction), (float) (prediction/sleep) * 1000);
 
             iteration++;
+
+
 
 
         } else {
 
 
-            log.info("Iteration = {}", iteration);
+
 
             double y1 = Double.parseDouble(String.valueOf((totalecoff -totalepoff /* sleep*/)))  ;
 
-            log.info(" iteration {} last time  prediction   {}", iteration, (float) (prediction));
+            log.info(" iteration {} last time  prediction arrivals  {} and arrival rate {}", iteration, (float) (prediction), (float) (prediction/sleep) * 1000);
 
-            log.info(" iteration {} current actual value of arrivals {}", iteration, y1);
+            log.info(" iteration {} current actual value of arrivals {} and current arrival rate = {}", iteration, y1, (float)y1/sleep * 1000);
+
+            log.info("Iteration = {} prediction accuracy {}", iteration, ((float) (prediction/sleep) * 1000)/((float)y1/sleep * 1000));
 
             rls.add_obs(X.transpose(), y1);
 
@@ -333,15 +341,411 @@ public class Scaler {
 
             prediction = (rls.getW().transpose().multiply(X.transpose())).getEntry(0, 0);
 
-            log.info(" arrivals since last iteration {}, is {}", iteration, (float) (totalecoff - totalepoff /* sleep)*/));
+            log.info(" arrivals since last iteration {}, is {} and the arrival rate is {}", iteration, (float) (totalecoff - totalepoff /* sleep)*/), ((float) (y1))/sleep *1000);
 
-            log.info(" Iteration {} prediction for next arrivals  {}", iteration, (float) (prediction));
+            log.info(" Iteration {} prediction for next arrivals  {} and the arrival rate is {}", iteration, (float) (prediction),(float) (prediction/sleep) * 1000);
+
+
 
             iteration++;
 
             log.info("=================================:");
         }
     }
+
+
+
+
+
+
+
+
+
+
+    //////////////////////////////////////////////////////
+
+
+
+
+
+    static void justPredict2(Map<String, ConsumerGroupDescription> consumerGroupDescriptionMap) {
+        float totalConsumptionRate = 0;
+        float totalArrivalRate = 0;
+        long totallag = 0;
+        int size = consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members().size();
+        log.info("Currently we have this number of consumers {}", size);
+
+        long totalpoff = 0;
+        long totalcoff = 0;
+        long totalepoff = 0;
+        long totalecoff = 0;
+
+
+        for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
+            totalpoff = 0;
+            totalcoff = 0;
+            totalepoff = 0;
+            totalecoff = 0;
+
+            for (TopicPartition tp : memberDescription.assignment().topicPartitions()) {
+                totalpoff += previousPartitionToCommittedOffset.get(tp);
+                totalcoff += currentPartitionToCommittedOffset.get(tp);
+                totalepoff += previousPartitionToLastOffset.get(tp);
+                totalecoff += currentPartitionToLastOffset.get(tp);
+            }
+
+
+            float consumptionRatePerConsumer = (float) (totalcoff - totalpoff) / sleep;
+            float arrivalRatePerConsumer = (float) (totalecoff - totalepoff) / sleep;
+
+
+            if (arrivalRatePerConsumer >= consumptionRatePerConsumer) {
+                // TODO do something
+            }
+
+            if (consumptionRatePerConsumer >
+                    maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f)) {
+            /*    log.info("current consumer rate {} > max consumer rate {} swapping:", consumptionRatePerConsumer *1000,
+                        maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f) *1000);*/
+                maxConsumptionRatePerConsumer.put(memberDescription, consumptionRatePerConsumer);
+            }
+
+            totalConsumptionRate += consumptionRatePerConsumer;
+            totalArrivalRate += arrivalRatePerConsumer;
+            totallag += consumerToLag.get(memberDescription);
+
+        }
+
+        log.info("=================================:");
+
+
+        log.info("totalArrivalRate {}, totalconsumptionRate {}, totallag {}",
+                totalArrivalRate * 1000, totalConsumptionRate * 1000, totallag);
+
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        ///////////////////////////////////////////////////prediction code//////////////////////////////////////////
+        if (iteration < 3) {
+
+
+
+
+
+
+
+
+           // double y1 = Double.parseDouble(String.valueOf((totalecoff -totalepoff /* sleep*/)))  ;
+
+
+            double y1 = Double.parseDouble(String.valueOf((totalArrivalRate*1000)));
+
+            log.info(" iteration {} last time  prediction and arrival rate {}", iteration, (float) (prediction)) ;
+
+            log.info(" iteration {} current actual value of  arrival rate = {}", iteration, y1);
+
+
+            rls.add_obs(X.transpose(), y1);
+
+
+
+            for(int j = 0; j < 3; j++)
+                Xx[0][j] = Xx[0][j + 1];
+
+            Xx[0][3] = y1;
+
+
+            X = new Array2DRowRealMatrix(Xx);
+
+
+            log.info(X);
+
+
+
+
+            prediction = (rls.getW().transpose().multiply(X.transpose())).getEntry(0, 0);
+
+
+
+            //log.info(" arrivals since last iteration {}, is {}", iteration, (float) (totalecoff - totalepoff /* sleep)*/));
+
+            log.info(" Iteration {} prediction  next arrival rate {}", iteration, (float) (prediction));
+
+            iteration++;
+
+
+
+
+        } else {
+
+
+
+
+            double y1 = Double.parseDouble(String.valueOf((totalArrivalRate*1000)));
+
+            log.info(" iteration {} last time  prediction  and arrival rate {}", iteration, (float) (prediction)) ;
+
+            log.info(" iteration {} current actual value of  arrival rate = {}", iteration, y1);
+
+            rls.add_obs(X.transpose(), y1);
+
+
+
+            for(int j = 0; j < 3; j++)
+                Xx[0][j] = Xx[0][j + 1];
+
+            Xx[0][3] = y1;
+
+            X = new Array2DRowRealMatrix(Xx);
+
+            log.info(X);
+
+            prediction = (rls.getW().transpose().multiply(X.transpose())).getEntry(0, 0);
+
+
+
+            log.info(" Iteration {} prediction for next  arrival rate is {}", iteration, (float) (prediction));
+
+
+
+            iteration++;
+
+            log.info("=================================:");
+        }
+    }
+
+
+
+
+    static void justPredict3(Map<String, ConsumerGroupDescription> consumerGroupDescriptionMap) {
+        float totalConsumptionRate = 0;
+        float totalArrivalRate = 0;
+        long totallag = 0;
+        int size = consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members().size();
+        log.info("Currently we have this number of consumers {}", size);
+
+        long totalpoff = 0;
+        long totalcoff = 0;
+        long totalepoff = 0;
+        long totalecoff = 0;
+
+
+        for (MemberDescription memberDescription : consumerGroupDescriptionMap.get(Scaler.CONSUMER_GROUP).members()) {
+            totalpoff = 0;
+            totalcoff = 0;
+            totalepoff = 0;
+            totalecoff = 0;
+
+            for (TopicPartition tp : memberDescription.assignment().topicPartitions()) {
+                totalpoff += previousPartitionToCommittedOffset.get(tp);
+                totalcoff += currentPartitionToCommittedOffset.get(tp);
+                totalepoff += previousPartitionToLastOffset.get(tp);
+                totalecoff += currentPartitionToLastOffset.get(tp);
+            }
+
+
+            float consumptionRatePerConsumer = (float) (totalcoff - totalpoff) / sleep;
+            float arrivalRatePerConsumer = (float) (totalecoff - totalepoff) / sleep;
+
+
+            if (arrivalRatePerConsumer >= consumptionRatePerConsumer) {
+                // TODO do something
+            }
+
+            if (consumptionRatePerConsumer >
+                    maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f)) {
+            /*    log.info("current consumer rate {} > max consumer rate {} swapping:", consumptionRatePerConsumer *1000,
+                        maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f) *1000);*/
+                maxConsumptionRatePerConsumer.put(memberDescription, consumptionRatePerConsumer);
+            }
+
+            totalConsumptionRate += consumptionRatePerConsumer;
+            totalArrivalRate += arrivalRatePerConsumer;
+            totallag += consumerToLag.get(memberDescription);
+
+        }
+
+        log.info("=================================:");
+
+
+        log.info("totalArrivalRate {}, totalconsumptionRate {}, totallag {}",
+                totalArrivalRate * 1000, totalConsumptionRate * 1000, totallag);
+
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        ///////////////////////////////////////////////////prediction code//////////////////////////////////////////
+        if (iteration <= 10) {
+
+
+
+
+
+
+
+
+            // double y1 = Double.parseDouble(String.valueOf((totalecoff -totalepoff /* sleep*/)))  ;
+
+
+            double y1 = Double.parseDouble(String.valueOf((totalArrivalRate*1000)));
+
+            log.info(" iteration {} last time  prediction and arrival rate {}", iteration, (float) (prediction)) ;
+
+            log.info(" iteration {} current actual value of  arrival rate = {}", iteration, y1);
+
+
+            rls.add_obs(X.transpose(), y1);
+
+
+
+            for(int j = 0; j < 3; j++)
+                Xx[0][j] = Xx[0][j + 1];
+
+            Xx[0][3] = y1;
+
+
+            X = new Array2DRowRealMatrix(Xx);
+
+
+            log.info(X);
+
+
+
+
+            prediction = (rls.getW().transpose().multiply(X.transpose())).getEntry(0, 0);
+
+
+
+            //log.info(" arrivals since last iteration {}, is {}", iteration, (float) (totalecoff - totalepoff /* sleep)*/));
+
+            log.info(" Iteration {} prediction  next arrival rate {}", iteration, (float) (prediction));
+
+            iteration++;
+
+            if ( (totalArrivalRate*1000) > (size *poll)) /*totalConsumptionRate *1000*/ {
+                if (size < numberOfPartitions) {
+                    log.info("Consumers are less than nb partition we can scale");
+                    try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
+                        ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
+                        k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
+                        k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale(size + 1);
+                        //scaled = true;
+                        start = Instant.now();
+                        log.info("since  arrival rate  predicted  {} is greater than  maximum consumed messages rate (size*poll) ,  I up scaled  by one {}",
+                                totalArrivalRate * 1000, (size * poll));
+                    }
+                } else {
+                    log.info("Consumers are equal to nb partitions we can not scale up anymore");
+                }
+            }  //else if (totalArrivalRate < totalConsumptionRate) {
+
+
+            else if ((totalArrivalRate *1000)  < ((size-1) *poll)) /*totalConsumptionRate *1000*/ {
+                try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
+                    ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
+                    k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
+                    int replicas = k8s.apps().deployments().inNamespace("default").withName("cons1persec").get().getSpec().getReplicas();
+                    if (replicas > 1) {
+                        k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale(replicas - 1);
+                        // firstIteration = true;
+
+                        scaled = true;
+                        firstIteration = true;
+                        start = Instant.now();
+
+                        log.info("since   arrival rate {} is lower than max   consumption rate  with size -1 times dth, I down scaled  by one {}",
+                                totalArrivalRate * 1000, /*totalConsumptionRate *1000 */ /*size *poll*/
+                                ((size-1) *poll *dth)/(float)SEC);
+
+//                log.info("since  rate   arrivals {} is smaller  than current   rate  consummed I down scaled  by one {}",
+//                        totalArrivalRate *1000 /*15*/, totalConsumptionRate*1000/*15*/);
+
+                        // recheck is this is needed....
+                        //sleep = 2 * sleep
+                    } else {
+                        log.info("Not going to  down scale since replicas already one");
+                    }
+                }
+            }
+
+
+
+
+
+
+        } else {
+            double y1 = Double.parseDouble(String.valueOf((totalArrivalRate*1000)));
+            log.info(" iteration {} last time  prediction  and arrival rate {}", iteration, (float) (prediction)) ;
+            log.info(" iteration {} current actual value of  arrival rate = {}", iteration, y1);
+            rls.add_obs(X.transpose(), y1);
+            for(int j = 0; j < 3; j++)
+                Xx[0][j] = Xx[0][j + 1];
+
+            Xx[0][3] = y1;
+
+            X = new Array2DRowRealMatrix(Xx);
+
+            log.info(X);
+
+            prediction = (rls.getW().transpose().multiply(X.transpose())).getEntry(0, 0);
+
+
+
+            log.info(" Iteration {} prediction for next  arrival rate is {}", iteration, (float) (prediction));
+
+
+
+            if ((prediction) > (size *poll) /*|| (totalArrivalRate*1000) > (size *poll)*/) /*totalConsumptionRate *1000*/ {
+                if (size < numberOfPartitions) {
+                    log.info("Consumers are less than nb partition we can scale");
+                    try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
+                        ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
+                        k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
+                        k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale(size + 1);
+                        //scaled = true;
+                        start = Instant.now();
+                        log.info("since  arrival rate  predicted  {} is greater than  maximum consumed messages rate (size*poll) ,  I up scaled  by one {}",
+                                prediction , (size *poll));
+                    }
+                } else {
+                    log.info("Consumers are equal to nb partitions we can not scale up anymore");
+                }
+            }  //else if (totalArrivalRate < totalConsumptionRate) {
+
+
+            else if (prediction   < ((size-1) *poll) &&  (totalArrivalRate *1000)  < (size-1) *poll && prediction >0) /*totalConsumptionRate *1000*/ {
+                try (final KubernetesClient k8s = new DefaultKubernetesClient()) {
+                    ServiceAccount fabric8 = new ServiceAccountBuilder().withNewMetadata().withName("fabric8").endMetadata().build();
+                    k8s.serviceAccounts().inNamespace("default").createOrReplace(fabric8);
+                    int replicas = k8s.apps().deployments().inNamespace("default").withName("cons1persec").get().getSpec().getReplicas();
+                    if (replicas > 1) {
+                        k8s.apps().deployments().inNamespace("default").withName("cons1persec").scale(replicas - 1);
+                        // firstIteration = true;
+
+                        scaled = true;
+                        firstIteration = true;
+                        start = Instant.now();
+
+                        log.info("since   arrival rate {} is lower than max   consumption rate  with size -1 times dth, I down scaled  by one {}",
+                                totalArrivalRate * 1000, /*totalConsumptionRate *1000 */ /*size *poll*/
+                                ((size-1) *poll ));
+                    } else {
+                        log.info("Not going to  down scale since replicas already one");
+                    }
+                }
+            }
+                }
+
+        iteration++;
+
+        log.info("=================================:");
+            }
+
+
+
+
+
+
 
 
 
