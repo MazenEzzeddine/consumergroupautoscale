@@ -3,3 +3,8 @@
 *.class
 *.iml
 *.jar
+
+/.idea/
+/target/
+
+/*.log
