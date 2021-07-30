@@ -37,14 +37,8 @@ public class RLS {
         RealMatrix kn, Pn, k, Pnn;
         double kd, Pd;
         kn = P.multiply(X);
-
-
         kd = (((X.transpose()).multiply(P)).multiply(X)).getEntry(0, 0) + lamda;
-
-
         k = kn.scalarMultiply(1 / kd);
-
-
         Pn = (((P.multiply(X)).multiply(X.transpose())).multiply(P));
         Pd = (((X.transpose()).multiply(P)).multiply(X)).getEntry(0, 0) + lamda;
         Pnn = Pn.scalarMultiply(1 / Pd);
