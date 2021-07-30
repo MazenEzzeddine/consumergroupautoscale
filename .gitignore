@@ -3,3 +3,8 @@
 
 /*.log
 .idea
+
+.idea
+dependency-reduced-pom.xml
+
+KafkaControllerAndScaler.iml
