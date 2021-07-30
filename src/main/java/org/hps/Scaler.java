@@ -269,7 +269,7 @@ public class Scaler {
             float arrivalRatePerConsumer = (float) (totalecoff - totalepoff) / sleep;
             if (arrivalRatePerConsumer >= consumptionRatePerConsumer) {
                 // TODO do something
-            } 
+            }
             if (consumptionRatePerConsumer >
                     maxConsumptionRatePerConsumer.getOrDefault(memberDescription, 0.0f)) {
                 maxConsumptionRatePerConsumer.put(memberDescription, consumptionRatePerConsumer);
